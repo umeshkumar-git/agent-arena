@@ -1,0 +1,993 @@
+```html
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Agent Arena</title>
+		<script src="https://cdn.tailwindcss.com"></script>
+		<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+		<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+		<script src="https://unpkg.com/framer-motion@11.0.8/dist/framer-motion.js"></script>
+		<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+		<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+		<style>
+			body {
+				background: #0a0a0f;
+				color: #e5e7eb;
+				font-family: ui-sans-serif, system-ui, -apple-system;
+				overflow: hidden;
+			}
+			.glow {
+				box-shadow: 0 0 20px rgba(139, 92, 246, 0.4);
+			}
+			.card-grad {
+				background: linear-gradient(145deg, #1f1b3a 0%, #141229 100%);
+			}
+			.card-grad-enemy {
+				background: linear-gradient(145deg, #3a1b1b 0%, #291212 100%);
+			}
+			.scrollbar::-webkit-scrollbar {
+				width: 6px;
+			}
+			.scrollbar::-webkit-scrollbar-track {
+				background: #111;
+			}
+			.scrollbar::-webkit-scrollbar-thumb {
+				background: #4c1d95;
+				border-radius: 3px;
+			}
+			.grid-bg {
+				background-image: linear-gradient(
+						rgba(139, 92, 246, 0.08) 1px,
+						transparent 1px
+					),
+					linear-gradient(
+						90deg,
+						rgba(139, 92, 246, 0.08) 1px,
+						transparent 1px
+					);
+				background-size: 40px 40px;
+			}
+			@keyframes pulse-glow {
+				0%,
+				100% {
+					box-shadow: 0 0 15px rgba(168, 85, 247, 0.5);
+				}
+				50% {
+					box-shadow: 0 0 30px rgba(168, 85, 247, 0.9);
+				}
+			}
+			.pulse-glow {
+				animation: pulse-glow 2s ease-in-out infinite;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="root"></div>
+
+		<script type="text/babel">
+			const { useState, useEffect, useRef, useMemo } = React;
+			const { motion, AnimatePresence } =
+				window.Motion || window.FramerMotion || {};
+			// framer-motion UMD exposes as 'Motion'
+			const M = window.Motion || window;
+			const MDiv = M.motion ? M.motion.div : "div";
+			const MButton = M.motion ? M.motion.button : "button";
+			const AP = M.AnimatePresence || (({ children }) => <>{children}</>);
+
+			// --- Icon helper using lucide ---
+			const Icon = ({ name, size = 16, className = "" }) => {
+				const ref = useRef(null);
+				useEffect(() => {
+					if (ref.current && window.lucide) {
+						ref.current.innerHTML = "";
+						const svg = window.lucide.createElement(
+							window.lucide.icons[name] ||
+								window.lucide.icons.Circle
+						);
+						svg.setAttribute("width", size);
+						svg.setAttribute("height", size);
+						svg.setAttribute("class", className);
+						ref.current.appendChild(svg);
+					}
+				}, [name, size, className]);
+				return <span ref={ref} className="inline-flex" />;
+			};
+
+			// --- Mock Agent Cards Pool ---
+			const AGENT_POOL = [
+				{
+					name: "Cipher Phantom",
+					attack: 4,
+					health: 5,
+					ability: "On deploy: deals 1 damage to all enemies.",
+					icon: "Ghost",
+					rarity: "epic",
+				},
+				{
+					name: "Neural Sentinel",
+					attack: 3,
+					health: 7,
+					ability: "Gains +1 attack each turn.",
+					icon: "ShieldCheck",
+					rarity: "rare",
+				},
+				{
+					name: "Quantum Ripper",
+					attack: 6,
+					health: 3,
+					ability: "First strike: attacks before foe.",
+					icon: "Zap",
+					rarity: "rare",
+				},
+				{
+					name: "GPT Overlord",
+					attack: 5,
+					health: 5,
+					ability: "Heals 2 HP on kill.",
+					icon: "Brain",
+					rarity: "legendary",
+				},
+				{
+					name: "Data Wraith",
+					attack: 2,
+					health: 4,
+					ability: "Stealth on first turn.",
+					icon: "EyeOff",
+					rarity: "common",
+				},
+				{
+					name: "Vector Hunter",
+					attack: 4,
+					health: 4,
+					ability: "Bonus +2 vs low-HP targets.",
+					icon: "Crosshair",
+					rarity: "rare",
+				},
+				{
+					name: "Synth Mage",
+					attack: 3,
+					health: 6,
+					ability: "Reflects 1 damage back.",
+					icon: "Sparkles",
+					rarity: "epic",
+				},
+				{
+					name: "Binary Brute",
+					attack: 7,
+					health: 7,
+					ability: "Taunt: must be attacked first.",
+					icon: "Axe",
+					rarity: "legendary",
+				},
+				{
+					name: "Pixel Scout",
+					attack: 2,
+					health: 2,
+					ability: "Draw a card when deployed.",
+					icon: "Search",
+					rarity: "common",
+				},
+				{
+					name: "Logic Bomb",
+					attack: 5,
+					health: 2,
+					ability: "On death: 3 AoE damage.",
+					icon: "Bomb",
+					rarity: "rare",
+				},
+				{
+					name: "Prompt Ninja",
+					attack: 5,
+					health: 3,
+					ability: "Evades 50% of attacks.",
+					icon: "Sword",
+					rarity: "epic",
+				},
+				{
+					name: "Token Titan",
+					attack: 6,
+					health: 8,
+					ability: "Immune to first damage.",
+					icon: "Shield",
+					rarity: "legendary",
+				},
+			];
+
+			const RARITY_STYLES = {
+				common: {
+					ring: "ring-slate-500",
+					text: "text-slate-300",
+					glow: "",
+				},
+				rare: {
+					ring: "ring-blue-500",
+					text: "text-blue-300",
+					glow: "shadow-blue-500/30",
+				},
+				epic: {
+					ring: "ring-purple-500",
+					text: "text-purple-300",
+					glow: "shadow-purple-500/40",
+				},
+				legendary: {
+					ring: "ring-amber-400",
+					text: "text-amber-300",
+					glow: "shadow-amber-500/50",
+				},
+			};
+
+			let uid = 0;
+			const mkCard = (tpl, owner) => ({
+				...tpl,
+				id: ++uid,
+				owner,
+				curHealth: tpl.health,
+			});
+			const randomCard = (owner) =>
+				mkCard(
+					AGENT_POOL[Math.floor(Math.random() * AGENT_POOL.length)],
+					owner
+				);
+
+			// --- Audio (simple bleeps) ---
+			const audioCtx =
+				typeof window !== "undefined" && window.AudioContext
+					? new AudioContext()
+					: null;
+			const bleep = (
+				freq = 400,
+				dur = 0.08,
+				type = "square",
+				gain = 0.08
+			) => {
+				if (!audioCtx) return;
+				try {
+					const o = audioCtx.createOscillator();
+					const g = audioCtx.createGain();
+					o.type = type;
+					o.frequency.value = freq;
+					g.gain.setValueAtTime(gain, audioCtx.currentTime);
+					g.gain.exponentialRampToValueAtTime(
+						0.0001,
+						audioCtx.currentTime + dur
+					);
+					o.connect(g);
+					g.connect(audioCtx.destination);
+					o.start();
+					o.stop(audioCtx.currentTime + dur);
+				} catch (e) {}
+			};
+
+			// --- Card Component ---
+			const Card = ({
+				card,
+				onClick,
+				small = false,
+				disabled = false,
+				glowing = false,
+				damaged = false,
+			}) => {
+				const r = RARITY_STYLES[card.rarity] || RARITY_STYLES.common;
+				const enemy = card.owner === "enemy";
+				return (
+					<MDiv
+						onClick={disabled ? undefined : onClick}
+						whileHover={!disabled ? { y: -6, scale: 1.03 } : {}}
+						whileTap={!disabled ? { scale: 0.97 } : {}}
+						animate={damaged ? { x: [0, -8, 8, -6, 6, 0] } : {}}
+						transition={{ duration: 0.4 }}
+						className={`relative rounded-xl ring-2 ${r.ring} ${
+							enemy ? "card-grad-enemy" : "card-grad"
+						}
+        ${glowing ? "pulse-glow" : ""} ${r.glow} shadow-lg
+        ${small ? "w-28 h-36 p-2" : "w-36 h-48 p-3"}
+        ${disabled ? "opacity-60 cursor-not-allowed" : "cursor-pointer"}
+        flex flex-col justify-between select-none`}
+					>
+						<div className="flex items-start justify-between">
+							<span
+								className={`text-[10px] uppercase tracking-wider ${r.text} font-bold`}
+							>
+								{card.rarity}
+							</span>
+							<Icon
+								name={card.icon}
+								size={small ? 16 : 20}
+								className={r.text}
+							/>
+						</div>
+						<div className="flex-1 flex items-center justify-center">
+							<div
+								className={`${
+									small ? "w-10 h-10" : "w-14 h-14"
+								} rounded-full bg-black/40 ring-1 ${
+									r.ring
+								} flex items-center justify-center`}
+							>
+								<Icon
+									name={card.icon}
+									size={small ? 22 : 30}
+									className={r.text}
+								/>
+							</div>
+						</div>
+						<div>
+							<div
+								className={`text-center font-semibold text-white truncate ${
+									small ? "text-xs" : "text-sm"
+								}`}
+							>
+								{card.name}
+							</div>
+							{!small && (
+								<div className="text-[10px] text-gray-400 text-center leading-tight mt-1 line-clamp-2">
+									{card.ability}
+								</div>
+							)}
+						</div>
+						<div className="flex justify-between items-center mt-1">
+							<div className="flex items-center gap-1 bg-red-900/60 px-2 py-0.5 rounded-md">
+								<Icon
+									name="Sword"
+									size={12}
+									className="text-red-300"
+								/>
+								<span className="text-xs font-bold text-red-200">
+									{card.attack}
+								</span>
+							</div>
+							<div className="flex items-center gap-1 bg-emerald-900/60 px-2 py-0.5 rounded-md">
+								<Icon
+									name="Heart"
+									size={12}
+									className="text-emerald-300"
+								/>
+								<span
+									className={`text-xs font-bold ${
+										card.curHealth < card.health
+											? "text-red-300"
+											: "text-emerald-200"
+									}`}
+								>
+									{card.curHealth}
+								</span>
+							</div>
+						</div>
+					</MDiv>
+				);
+			};
+
+			// --- Main App ---
+			const App = () => {
+				const [gameState, setGameState] = useState("start"); // start | playing | over
+				const [hand, setHand] = useState([]);
+				const [playerField, setPlayerField] = useState([]);
+				const [enemyField, setEnemyField] = useState([]);
+				const [playerHP, setPlayerHP] = useState(20);
+				const [enemyHP, setEnemyHP] = useState(20);
+				const [turn, setTurn] = useState(1);
+				const [log, setLog] = useState([]);
+				const [busy, setBusy] = useState(false);
+				const [score, setScore] = useState(0);
+				const [damagedIds, setDamagedIds] = useState({});
+				const logRef = useRef(null);
+
+				useEffect(() => {
+					window.lucide &&
+						window.lucide.createIcons &&
+						window.lucide.createIcons();
+				});
+				useEffect(() => {
+					if (logRef.current)
+						logRef.current.scrollTop = logRef.current.scrollHeight;
+				}, [log]);
+
+				const addLog = (type, text) =>
+					setLog((l) => [
+						...l,
+						{ type, text, t: Date.now() + Math.random() },
+					]);
+
+				const startGame = () => {
+					setGameState("playing");
+					setHand([
+						randomCard("player"),
+						randomCard("player"),
+						randomCard("player"),
+						randomCard("player"),
+					]);
+					setPlayerField([]);
+					setEnemyField([]);
+					setPlayerHP(20);
+					setEnemyHP(20);
+					setTurn(1);
+					setLog([
+						{
+							type: "info",
+							text: "⚔ Agent Arena initialized. Deploy your agents!",
+							t: Date.now(),
+						},
+					]);
+					bleep(600, 0.12);
+				};
+
+				const deployCard = (card) => {
+					if (busy || playerField.length >= 4) return;
+					bleep(500, 0.08, "triangle");
+					setPlayerField((f) => [...f, card]);
+					setHand((h) => h.filter((c) => c.id !== card.id));
+					addLog(
+						"deploy",
+						`🟣 Deployed ${card.name} (${card.attack}/${card.health})`
+					);
+				};
+
+				const flashDamage = (id) => {
+					setDamagedIds((d) => ({ ...d, [id]: true }));
+					setTimeout(
+						() =>
+							setDamagedIds((d) => {
+								const n = { ...d };
+								delete n[id];
+								return n;
+							}),
+						400
+					);
+				};
+
+				const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+				const endTurn = async () => {
+					if (busy) return;
+					setBusy(true);
+
+					// Enemy deploys
+					if (enemyField.length < 4 && Math.random() < 0.85) {
+						const ec = randomCard("enemy");
+						setEnemyField((f) => [...f, ec]);
+						addLog(
+							"deploy",
+							`🔴 Enemy deploys ${ec.name} (${ec.attack}/${ec.health})`
+						);
+						bleep(300, 0.08, "sawtooth");
+						await sleep(400);
+					}
+
+					// Combat resolution
+					let pField = [...playerField];
+					let eField = [...enemyField];
+					let pHP = playerHP,
+						eHP = enemyHP;
+
+					const maxPairs = Math.max(pField.length, eField.length);
+					for (let i = 0; i < maxPairs; i++) {
+						const pc = pField[i];
+						const ec = eField[i];
+						if (pc && ec) {
+							addLog(
+								"combat",
+								`⚔ ${pc.name} clashes with ${ec.name}`
+							);
+							bleep(800, 0.06);
+							flashDamage(pc.id);
+							flashDamage(ec.id);
+							pc.curHealth -= ec.attack;
+							ec.curHealth -= pc.attack;
+							await sleep(500);
+							if (pc.curHealth <= 0) {
+								addLog("death", `💀 ${pc.name} was destroyed.`);
+								bleep(150, 0.15, "sawtooth");
+							}
+							if (ec.curHealth <= 0) {
+								addLog("death", `💀 ${ec.name} was destroyed.`);
+								bleep(150, 0.15, "sawtooth");
+							}
+						} else if (pc && !ec) {
+							addLog(
+								"attack",
+								`🔥 ${pc.name} strikes enemy core for ${pc.attack}!`
+							);
+							eHP -= pc.attack;
+							bleep(900, 0.1);
+							await sleep(400);
+						} else if (!pc && ec) {
+							addLog(
+								"attack",
+								`💥 ${ec.name} strikes your core for ${ec.attack}!`
+							);
+							pHP -= ec.attack;
+							bleep(200, 0.1, "sawtooth");
+							await sleep(400);
+						}
+					}
+
+					pField = pField.filter((c) => c.curHealth > 0);
+					eField = eField.filter((c) => c.curHealth > 0);
+
+					setPlayerField(pField);
+					setEnemyField(eField);
+					setPlayerHP(pHP);
+					setEnemyHP(eHP);
+
+					// Draw cards
+					if (hand.length < 5) {
+						const newCard = randomCard("player");
+						setHand((h) => [...h, newCard]);
+						addLog("draw", `✨ Drew ${newCard.name}`);
+						bleep(700, 0.05);
+					}
+
+					setTurn((t) => t + 1);
+
+					// Check win/lose
+					if (eHP <= 0 && pHP > 0) {
+						addLog("win", "🏆 VICTORY! Enemy core destroyed.");
+						setScore((s) => s + 100);
+						setTimeout(() => setGameState("over"), 800);
+					} else if (pHP <= 0) {
+						addLog("lose", "☠ DEFEAT. Your core has fallen.");
+						setTimeout(() => setGameState("over"), 800);
+					} else if (pHP <= 0 && eHP <= 0) {
+						addLog("lose", "⚖ Mutual destruction.");
+						setTimeout(() => setGameState("over"), 800);
+					}
+
+					setBusy(false);
+				};
+
+				// --- START SCREEN ---
+				if (gameState === "start") {
+					return (
+						<div className="h-screen w-screen grid-bg flex items-center justify-center">
+							<MDiv
+								initial={{ opacity: 0, y: 20 }}
+								animate={{ opacity: 1, y: 0 }}
+								transition={{ duration: 0.6 }}
+								className="text-center max-w-lg px-6"
+							>
+								<MDiv
+									animate={{ rotate: [0, 5, -5, 0] }}
+									transition={{
+										repeat: Infinity,
+										duration: 4,
+									}}
+									className="inline-block mb-6"
+								>
+									<div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-purple-600 to-fuchsia-700 flex items-center justify-center glow">
+										<Icon
+											name="Swords"
+											size={52}
+											className="text-white"
+										/>
+									</div>
+								</MDiv>
+								<h1 className="text-6xl font-black bg-gradient-to-r from-purple-400 via-fuchsia-400 to-pink-400 bg-clip-text text-transparent mb-3">
+									AGENT ARENA
+								</h1>
+								<p className="text-gray-400 mb-2">
+									An AI-powered auto-battler
+								</p>
+								<p className="text-gray-500 text-sm mb-8">
+									Deploy agents. Outsmart opponents. Destroy
+									their core.
+								</p>
+								<MButton
+									whileHover={{ scale: 1.05 }}
+									whileTap={{ scale: 0.95 }}
+									onClick={startGame}
+									className="px-8 py-4 bg-gradient-to-r from-purple-600 to-fuchsia-600 rounded-xl text-white font-bold text-lg glow inline-flex items-center gap-2"
+								>
+									<Icon
+										name="Play"
+										size={20}
+										className="text-white"
+									/>{" "}
+									Enter Arena
+								</MButton>
+								<div className="mt-8 flex justify-center gap-6 text-xs text-gray-500">
+									<div className="flex items-center gap-1">
+										<Icon name="Sword" size={12} /> Attack
+									</div>
+									<div className="flex items-center gap-1">
+										<Icon name="Heart" size={12} /> Health
+									</div>
+									<div className="flex items-center gap-1">
+										<Icon name="Sparkles" size={12} />{" "}
+										Abilities
+									</div>
+								</div>
+							</MDiv>
+						</div>
+					);
+				}
+
+				// --- GAME OVER ---
+				if (gameState === "over") {
+					const won = enemyHP <= 0 && playerHP > 0;
+					return (
+						<div className="h-screen w-screen grid-bg flex items-center justify-center">
+							<MDiv
+								initial={{ scale: 0.5, opacity: 0 }}
+								animate={{ scale: 1, opacity: 1 }}
+								className="text-center bg-black/60 backdrop-blur rounded-2xl p-12 ring-2 ring-purple-600/50"
+							>
+								<Icon
+									name={won ? "Trophy" : "Skull"}
+									size={80}
+									className={
+										won ? "text-amber-400" : "text-red-500"
+									}
+								/>
+								<h1
+									className={`text-5xl font-black mt-4 mb-2 ${
+										won ? "text-amber-400" : "text-red-400"
+									}`}
+								>
+									{won ? "VICTORY" : "DEFEAT"}
+								</h1>
+								<p className="text-gray-400 mb-2">
+									Turns survived: {turn}
+								</p>
+								<p className="text-gray-400 mb-6">
+									Score:{" "}
+									<span className="text-purple-300 font-bold">
+										{score}
+									</span>
+								</p>
+								<MButton
+									whileHover={{ scale: 1.05 }}
+									whileTap={{ scale: 0.95 }}
+									onClick={startGame}
+									className="px-6 py-3 bg-gradient-to-r from-purple-600 to-fuchsia-600 rounded-xl text-white font-bold inline-flex items-center gap-2"
+								>
+									<Icon name="RotateCw" size={18} /> Play
+									Again
+								</MButton>
+							</MDiv>
+						</div>
+					);
+				}
+
+				// --- GAME UI ---
+				const logColor = {
+					info: "text-purple-300",
+					deploy: "text-cyan-300",
+					combat: "text-yellow-300",
+					attack: "text-orange-300",
+					death: "text-red-400",
+					draw: "text-emerald-300",
+					win: "text-amber-300 font-bold",
+					lose: "text-red-500 font-bold",
+				};
+
+				return (
+					<div className="h-screen w-screen grid-bg flex flex-col overflow-hidden">
+						{/* Top Bar */}
+						<div className="flex items-center justify-between px-4 md:px-6 py-3 border-b border-purple-900/50 bg-black/50 backdrop-blur z-10">
+							<div className="flex items-center gap-3">
+								<div className="w-9 h-9 rounded-lg bg-gradient-to-br from-purple-600 to-fuchsia-700 flex items-center justify-center">
+									<Icon
+										name="Swords"
+										size={20}
+										className="text-white"
+									/>
+								</div>
+								<div>
+									<h1 className="font-bold text-white leading-none">
+										Agent Arena
+									</h1>
+									<p className="text-[10px] text-gray-500">
+										Auto-Battler · Turn {turn}
+									</p>
+								</div>
+							</div>
+							<div className="flex items-center gap-3 md:gap-6">
+								<div className="flex items-center gap-2">
+									<Icon
+										name="User"
+										size={14}
+										className="text-blue-400"
+									/>
+									<div className="w-20 md:w-32 h-2 bg-gray-800 rounded-full overflow-hidden">
+										<MDiv
+											animate={{
+												width: `${
+													(playerHP / 20) * 100
+												}%`,
+											}}
+											className="h-full bg-gradient-to-r from-blue-500 to-cyan-400"
+										/>
+									</div>
+									<span className="text-xs font-mono text-blue-300 w-10">
+										{playerHP}/20
+									</span>
+								</div>
+								<div className="text-xs text-purple-400 font-bold hidden md:block">
+									VS
+								</div>
+								<div className="flex items-center gap-2">
+									<Icon
+										name="Skull"
+										size={14}
+										className="text-red-400"
+									/>
+									<div className="w-20 md:w-32 h-2 bg-gray-800 rounded-full overflow-hidden">
+										<MDiv
+											animate={{
+												width: `${
+													(enemyHP / 20) * 100
+												}%`,
+											}}
+											className="h-full bg-gradient-to-r from-red-500 to-orange-400"
+										/>
+									</div>
+									<span className="text-xs font-mono text-red-300 w-10">
+										{enemyHP}/20
+									</span>
+								</div>
+								<div className="text-xs text-gray-400 hidden md:flex items-center gap-1">
+									<Icon
+										name="Star"
+										size={12}
+										className="text-amber-400"
+									/>{" "}
+									{score}
+								</div>
+							</div>
+						</div>
+
+						{/* Main */}
+						<div className="flex-1 flex overflow-hidden">
+							{/* Battlefield + Hand */}
+							<div className="flex-1 flex flex-col">
+								{/* Battlefield */}
+								<div className="flex-1 flex flex-col justify-center items-center px-4 relative">
+									<div className="absolute top-2 left-4 text-[10px] uppercase tracking-widest text-red-400/70 flex items-center gap-1">
+										<Icon name="Skull" size={10} /> Enemy
+										Field
+									</div>
+
+									{/* Enemy row */}
+									<div className="flex-1 flex items-center justify-center gap-3 w-full min-h-[160px]">
+										<AP>
+											{enemyField.length === 0 ? (
+												<div
+													key="empty-e"
+													className="text-gray-600 text-sm italic"
+												>
+													Enemy field empty
+												</div>
+											) : (
+												enemyField.map((c) => (
+													<MDiv
+														key={c.id}
+														layout
+														initial={{
+															opacity: 0,
+															y: -40,
+															scale: 0.5,
+														}}
+														animate={{
+															opacity: 1,
+															y: 0,
+															scale: 1,
+														}}
+														exit={{
+															opacity: 0,
+															scale: 0.5,
+														}}
+													>
+														<Card
+															card={c}
+															small
+															damaged={
+																!!damagedIds[
+																	c.id
+																]
+															}
+															disabled
+														/>
+													</MDiv>
+												))
+											)}
+										</AP>
+									</div>
+
+									{/* Versus divider */}
+									<div className="w-full flex items-center gap-3 my-2 px-6">
+										<div className="flex-1 h-px bg-gradient-to-r from-transparent via-purple-600/60 to-transparent" />
+										<MButton
+											whileHover={
+												!busy ? { scale: 1.05 } : {}
+											}
+											whileTap={
+												!busy ? { scale: 0.95 } : {}
+											}
+											onClick={endTurn}
+											disabled={busy}
+											className={`px-5 py-2 rounded-lg font-bold text-sm inline-flex items-center gap-2
+                  ${
+						busy
+							? "bg-gray-800 text-gray-500 cursor-not-allowed"
+							: "bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white glow hover:from-purple-500"
+					}`}
+										>
+											<Icon
+												name={
+													busy ? "Loader" : "Swords"
+												}
+												size={14}
+												className={
+													busy ? "animate-spin" : ""
+												}
+											/>
+											{busy ? "Resolving..." : "Battle!"}
+										</MButton>
+										<div className="flex-1 h-px bg-gradient-to-r from-transparent via-purple-600/60 to-transparent" />
+									</div>
+
+									{/* Player row */}
+									<div className="flex-1 flex items-center justify-center gap-3 w-full min-h-[160px]">
+										<AP>
+											{playerField.length === 0 ? (
+												<div
+													key="empty-p"
+													className="text-gray-600 text-sm italic"
+												>
+													Deploy agents from your hand
+												</div>
+											) : (
+												playerField.map((c) => (
+													<MDiv
+														key={c.id}
+														layout
+														initial={{
+															opacity: 0,
+															y: 40,
+															scale: 0.5,
+														}}
+														animate={{
+															opacity: 1,
+															y: 0,
+															scale: 1,
+														}}
+														exit={{
+															opacity: 0,
+															scale: 0.5,
+														}}
+													>
+														<Card
+															card={c}
+															small
+															damaged={
+																!!damagedIds[
+																	c.id
+																]
+															}
+															disabled
+														/>
+													</MDiv>
+												))
+											)}
+										</AP>
+									</div>
+									<div className="absolute bottom-2 left-4 text-[10px] uppercase tracking-widest text-blue-400/70 flex items-center gap-1">
+										<Icon name="User" size={10} /> Your
+										Field ({playerField.length}/4)
+									</div>
+								</div>
+
+								{/* Hand */}
+								<div className="border-t border-purple-900/50 bg-gradient-to-b from-black/40 to-purple-950/20 px-4 py-4">
+									<div className="flex items-center justify-between mb-2">
+										<div className="text-[10px] uppercase tracking-widest text-purple-400/80 flex items-center gap-1">
+											<Icon name="Layers" size={10} />{" "}
+											Your Hand ({hand.length})
+										</div>
+										<div className="text-[10px] text-gray-500">
+											Click a card to deploy
+										</div>
+									</div>
+									<div className="flex items-end justify-center gap-3 min-h-[196px]">
+										<AP>
+											{hand.map((c) => (
+												<MDiv
+													key={c.id}
+													layout
+													initial={{
+														y: 60,
+														opacity: 0,
+													}}
+													animate={{
+														y: 0,
+														opacity: 1,
+													}}
+													exit={{ y: 60, opacity: 0 }}
+												>
+													<Card
+														card={c}
+														onClick={() =>
+															deployCard(c)
+														}
+														disabled={
+															busy ||
+															playerField.length >=
+																4
+														}
+														glowing={
+															!busy &&
+															playerField.length <
+																4
+														}
+													/>
+												</MDiv>
+											))}
+											{hand.length === 0 && (
+												<div
+													key="noh"
+													className="text-gray-600 text-sm italic py-16"
+												>
+													Hand is empty — end turn to
+													draw
+												</div>
+											)}
+										</AP>
+									</div>
+								</div>
+							</div>
+
+							{/* Combat Log */}
+							<div className="w-64 md:w-80 border-l border-purple-900/50 bg-black/50 backdrop-blur flex flex-col">
+								<div className="px-4 py-3 border-b border-purple-900/50 flex items-center gap-2">
+									<Icon
+										name="ScrollText"
+										size={16}
+										className="text-purple-400"
+									/>
+									<h2 className="font-bold text-sm text-purple-200">
+										Combat Log
+									</h2>
+									<div className="ml-auto w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+								</div>
+								<div
+									ref={logRef}
+									className="flex-1 overflow-y-auto scrollbar p-3 space-y-1.5 text-xs"
+								>
+									<AP>
+										{log.map((entry) => (
+											<MDiv
+												key={entry.t}
+												initial={{ opacity: 0, x: 20 }}
+												animate={{ opacity: 1, x: 0 }}
+												className={`${
+													logColor[entry.type] ||
+													"text-gray-400"
+												} font-mono leading-relaxed`}
+											>
+												<span className="text-gray-600 mr-1">
+													›
+												</span>
+												{entry.text}
+											</MDiv>
+										))}
+									</AP>
+								</div>
+								<div className="px-4 py-2 border-t border-purple-900/50 text-[10px] text-gray-500 flex justify-between">
+									<span>Turn {turn}</span>
+									<span>{log.length} events</span>
+								</div>
+							</div>
+						</div>
+					</div>
+				);
+			};
+
+			ReactDOM.createRoot(document.getElementById("root")).render(
+				<App />
+			);
+		</script>
+	</body>
+</html>
+```
